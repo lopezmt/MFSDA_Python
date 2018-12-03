@@ -80,11 +80,16 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 		self.lineEdit_covariate = self.logic.get('lineEdit_covariate')
 		#self.lineEdit_covariateType = self.logic.get('lineEdit_covariateType')
 		self.lineEdit_output = self.logic.get('lineEdit_output')
-
 		self.pushButton_run = self.logic.get('pushButton_run')
+
+
 		# self.apply_button=self.logic.get('Apply_Button')
 		self.lineEdit_CovariateNames = self.logic.get('lineEdit_CovariateNames')
 		self.lineEdit_ShapePvalue=self.logic.get('lineEdit_ShapePvalue')
+		self.lineEdit_Pvalues = self.logic.get('lineEdit_Pvalues')
+		self.lineEdit_efit=self.logic.get('lineEdit_efit')
+		self.lineEdit_output_reconstruction = self.logic.get('lineEdit_output_reconstruction')
+		self.pushButton_runReconstruction=self.logic.get('pushButton_runReconstruction')
 
 		'''
 		self.lineEdit_covariateType.connect('currentPathChanged(const QString)', self.onCSVFile)
@@ -94,13 +99,14 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 		self.lineEdit_output.connect('directoryChanged (const QString)', self.onCSVFile)
 		self.lineEdit_ShapePvalue.connect('directoryChanged (const QString)', self.onCSVFile)
 		self.lineEdit_CovariateNames.connect('directoryChanged (const QString)', self.onCSVFile)'''		
-		self.pushButton_run.connect('clicked(bool)', self.onCSVFile)
+		self.pushButton_run.connect('clicked(bool)', self.onRun_MFSDA)
+		self.pushButton_runReconstruction.connect('clicked(bool)', self.onRun_MFSDAReconstruction)
 
 
 	def onShapeState(self):
 	    state=self.MFSDAShapeThread.GetStatusString()
 	    if state=='Running'or state=='Scheduled':
-	        seconds = time.time()-self.starting_time
+	        seconds = time.time()-self.starting_time_recons
 	        m, s = divmod(seconds, 60)
 	        h, m = divmod(m, 60)
 	        if h==0 and m==0:
@@ -112,48 +118,86 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 	        if int(s) ==0:
 	            print("MFSDA shape creation "+self.MFSDAShapeThread.GetStatusString()+"  "+t)
 
-	        self.pushButton_run.setText("Abort shape creation ("+t+")")
+	        self.pushButton_runReconstruction.setText("Abort shape creation ("+t+")")
 	    else:
-	        print('MFSDA shape creation done')
-	        self.checkThreadTimer.stop()
-	        self.checkThreadTimer.disconnect('timeout()', self.onShapeState)
+	        print('MFSDA shape creation ' + self.MFSDAShapeThread.GetStatusString())
+	        self.checkThreadTimer_recons.stop()
+	        self.checkThreadTimer_recons.disconnect('timeout()', self.onShapeState)
 
-	        CSVFile=open(self.lineEdit_output.directory+'/output.csv', 'wb')
+	        CSVFile=open(os.path.join(os.path.dirname(self.param_reconstruct["output"]),'output.csv'), 'wb')
 	        Data=['VTK Files']
 	        with CSVFile:
 	        	writer = csv.writer(CSVFile)
 	        	writer.writerow(Data)
-	        	writer.writerow([self.lineEdit_ShapePvalue.currentPath])
+	        	writer.writerow([self.param_reconstruct["shape"]])
 	        CSVFile.close()
-	        self.pushButton_run.setText("Run")
-	        self.pushButton_run.connect('clicked(bool)', self.onCSVFile)
-	        self.pushButton_run.disconnect('clicked(bool)', self.onKillComputationShape)
+	        self.pushButton_runReconstruction.setText("Run Reconstruction")
+	        self.pushButton_runReconstruction.disconnect('clicked(bool)', self.onKillComputationShape)
+	        self.pushButton_runReconstruction.connect('clicked(bool)', self.onRun_MFSDAReconstruction)
+	        
 	        parameters = {}
-	        parameters["CSVFile"] = self.lineEdit_output.directory+'/output.csv'
+	        parameters["CSVFile"] = os.path.join(self.param_reconstruct["output"],'output.csv')
 	        module = slicer.modules.shapepopulationviewer
 	        slicer.cli.run(module, None, parameters, wait_for_completion=True)
-
 
 	    return
 
 	def onKillComputationShape(self):
         
-	    self.pushButton_run.clicked.disconnect()
-	    self.pushButton_run.connect('clicked()',self.onCSVFile)
-	    self.pushButton_run.setText("Run")
+	    self.pushButton_runReconstruction.clicked.disconnect()
+	    self.pushButton_runReconstruction.connect('clicked()',self.onRun_MFSDAReconstruction)
+	    self.pushButton_runReconstruction.setText("Run Reconstruction")
 
-	    self.checkThreadTimer.stop()
-	    self.checkThreadTimer.timeout.disconnect()
+	    self.checkThreadTimer_recons.stop()
+	    self.checkThreadTimer_recons.timeout.disconnect()
 
 	    self.MFSDAShapeThread.Cancel()
-	    minutes = int((time.time()-self.starting_time)/60)
+	    minutes = int((time.time()-self.starting_time_recons)/60)
 	    print('Computation Stopped after '+str(minutes)+' min')
+
+	def onRun_MFSDAReconstruction(self):
+		'''if not os.path.exists(self.lineEdit_ShapePvalue.currentPath):
+			self.stateCSVMeansShape = False
+			return
+		if not os.path.exists(self.lineEdit_CovariateNames.currentPath):
+			self.stateCSVMeansShape = False
+			return
+		condition6 = self.logic.checkExtension(self.lineEdit_ShapePvalue.currentPath, ".vtk")
+		condition7= self.lineEdit_CovariateNames.currentPath!='.'
+		if not condition6:
+			self.lineEdit_ShapePvalue.setCurrentPath(" ")
+			self.stateCSVDataset = False
+			return'''
+		'''if not condition7:
+			self.lineEdit_CovariateNames.setCurrentPath(" ")
+			self.stateCSVDataset = False
+			return'''
+
+		print('launching ...')
+		self.param_reconstruct = {}
+		self.param_reconstruct["shape"] = self.lineEdit_ShapePvalue.currentPath
+		self.param_reconstruct["pvalues"] = self.lineEdit_Pvalues.currentPath
+		self.param_reconstruct["efit"] = self.lineEdit_efit.currentPath
+		self.param_reconstruct["covariates"] = self.lineEdit_CovariateNames.currentPath
+		self.param_reconstruct["output"] = self.lineEdit_output.directory+'/out.vtk'
+
+		self.starting_time_recons=time.time()
+		MFSDAShapemodule = slicer.modules.mfsda_createshapes
+		self.MFSDAShapeThread=slicer.cli.run(MFSDAShapemodule, None, self.param_reconstruct, wait_for_completion=False)
+
+
+		self.checkThreadTimer_recons=qt.QTimer()
+		self.checkThreadTimer_recons.connect('timeout()', self.onShapeState)
+		self.checkThreadTimer_recons.start(1000)
+
+		self.pushButton_runReconstruction.disconnect('clicked(bool)', self.onRun_MFSDAReconstruction)
+		self.pushButton_runReconstruction.connect('clicked(bool)', self.onKillComputationShape)
 
 
 	def onComputationState(self):
 	    state=self.MFSDAThread.GetStatusString()
 	    if state=='Running'or state=='Scheduled':
-	        seconds = time.time()-self.starting_time
+	        seconds = time.time()-self.starting_time_run
 	        m, s = divmod(seconds, 60)
 	        h, m = divmod(m, 60)
 	        if h==0 and m==0:
@@ -167,47 +211,33 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 
 	        self.pushButton_run.setText("Abort computation ("+t+")")
 	    else:
-	        print('MFSDA Computation done')
-	        self.checkThreadTimer.stop()
+			print('MFSDA Computation done')
 
-	        self.param = {}
-	        self.param["shape"] = self.lineEdit_ShapePvalue.currentPath
-	        self.param["pvalues"] = self.lineEdit_output.directory+'/pvalues.json'
-	        self.param["efit"] = self.lineEdit_output.directory+'/efit.json'
-	        self.param["covariates"] = self.lineEdit_CovariateNames.currentPath
-	        self.param["output"] = self.lineEdit_output.directory+'/out.vtk'
+			self.lineEdit_Pvalues.setCurrentPath(os.path.join(self.param_run["outputDir"],'pvalues.json'))
+			self.lineEdit_efit.setCurrentPath(os.path.join(self.param_run["outputDir"],'efit.json'))
 
-	        MFSDAShapemodule = slicer.modules.mfsda_createshapes
-	        self.MFSDAShapeThread=slicer.cli.run(MFSDAShapemodule, None, self.param, wait_for_completion=False)
+			self.pushButton_run.clicked.disconnect()
+			self.pushButton_run.connect('clicked()',self.onRun_MFSDA)
+			self.pushButton_run.setText("Run")
 
-		    
-	        self.checkThreadTimer.disconnect('timeout()', self.onComputationState)
-	        self.checkThreadTimer.connect('timeout()', self.onShapeState)
-	        self.checkThreadTimer.start(1000)
-
-	        self.pushButton_run.connect('clicked(bool)', self.onKillComputationShape)
-	        self.pushButton_run.disconnect('clicked(bool)', self.onKillComputation)
-
+			self.checkThreadTimer_run.stop()
+			self.checkThreadTimer_run.timeout.disconnect()
 
 	def onKillComputation(self):
 	    
 	    self.pushButton_run.clicked.disconnect()
-	    self.pushButton_run.connect('clicked()',self.onCSVFile)
+	    self.pushButton_run.connect('clicked()',self.onRun_MFSDA)
 	    self.pushButton_run.setText("Run")
 
-	    self.checkThreadTimer.stop()
-	    self.checkThreadTimer.timeout.disconnect()
+	    self.checkThreadTimer_run.stop()
+	    self.checkThreadTimer_run.timeout.disconnect()
 
 	    self.MFSDAThread.Cancel()
-	    minutes = int((time.time()-self.starting_time)/60)
+	    minutes = int((time.time()-self.starting_time_run)/60)
 	    print('Computation Stopped after '+str(minutes)+' min')
 
-	def onCSVFile(self):
-		print('coucou')
+	def onRun_MFSDA(self):
 		self.dictShapeModels = dict()
-		'''if not os.path.exists(self.lineEdit_covariateType.currentPath):
-			self.stateCSVMeansShape = False
-			return'''
 		if not os.path.exists(self.lineEdit_covariate.currentPath):
 			self.stateCSVMeansShape = False
 			return
@@ -220,19 +250,12 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 		if not os.path.exists(self.lineEdit_output.directory):
 			self.stateCSVMeansShape = False
 			return
-		if not os.path.exists(self.lineEdit_ShapePvalue.currentPath):
-			self.stateCSVMeansShape = False
-			return
-		"""if not os.path.exists(self.lineEdit_CovariateNames.currentPath):
-			self.stateCSVMeansShape = False
-			return"""
+		
 		condition1 = self.logic.checkExtension(self.lineEdit_vtk.currentPath, ".txt")
 		condition2 = self.logic.checkExtension(self.lineEdit_template.currentPath, ".vtk")
 		condition3 = self.logic.checkExtension(self.lineEdit_covariate.currentPath, ".csv")
-		#condition4 = self.logic.checkExtension(self.lineEdit_covariateType.currentPath, ".csv")
 		condition5= self.lineEdit_output.directory!='.'
-		condition6 = self.logic.checkExtension(self.lineEdit_ShapePvalue.currentPath, ".vtk")
-		condition7= self.lineEdit_CovariateNames.currentPath!='.'
+		
 
 		if not condition1:
 			self.lineEdit_vtk.setCurrentPath(" ")
@@ -246,137 +269,43 @@ class MFSDAWidget(ScriptedLoadableModuleWidget):
 			self.lineEdit_covariate.setCurrentPath(" ")
 			self.stateCSVDataset = False
 			return
-		'''if not condition4:
-			self.lineEdit_covariateType.setCurrentPath(" ")
-			self.stateCSVDataset = False
-			return'''
 		if not condition5:
 			#self.lineEdit_output.setDirectory(" ")
 			self.stateCSVDataset = False
 			return
-		if not condition6:
-			self.lineEdit_ShapePvalue.setCurrentPath(" ")
-			self.stateCSVDataset = False
-			return
-		'''if not condition7:
-			self.lineEdit_CovariateNames.setCurrentPath(" ")
-			self.stateCSVDataset = False
-			return'''
+		
 		PathOutput=os.path.dirname(self.lineEdit_vtk.currentPath)+'/'
 
-		# print('bouton !!!!',self.apply_button.clicked())
-		#print(self.lineEdit_covariateType.currentPath)
 		print(self.lineEdit_covariate.currentPath)
 		print(self.lineEdit_template.currentPath)
 		print(self.lineEdit_vtk.currentPath)
-		print(self.lineEdit_output.directory)
-		print(self.lineEdit_ShapePvalue.currentPath)
-		print(self.lineEdit_CovariateNames.currentPath)		
+		print(self.lineEdit_output.directory)		
 		print(PathOutput)
 
 
 
-		self.param = {}
-		self.param["shapeData"] = self.lineEdit_vtk.currentPath
-		self.param["coordData"] = self.lineEdit_template.currentPath
-		self.param["covariate"] = self.lineEdit_covariate.currentPath
-		#self.param["covariateType"] = self.lineEdit_covariateType.currentPath
-		self.param["outputDir"] = self.lineEdit_output.directory
+		self.param_run = {}
+		self.param_run["shapeData"] = self.lineEdit_vtk.currentPath
+		self.param_run["coordData"] = self.lineEdit_template.currentPath
+		self.param_run["covariate"] = self.lineEdit_covariate.currentPath
+		self.param_run["outputDir"] = self.lineEdit_output.directory
 
 
-		self.starting_time=time.time()
+		self.starting_time_run=time.time()
 		MFSDAmodule = slicer.modules.mfsda_run
-		self.MFSDAThread=slicer.cli.run(MFSDAmodule, None, self.param, wait_for_completion=False)
+		self.MFSDAThread=slicer.cli.run(MFSDAmodule, None, self.param_run, wait_for_completion=False)
 
 
-		self.checkThreadTimer=qt.QTimer()
-		self.checkThreadTimer.connect('timeout()', self.onComputationState)
-		self.checkThreadTimer.start(1000)
+		self.checkThreadTimer_run=qt.QTimer()
+		self.checkThreadTimer_run.connect('timeout()', self.onComputationState)
+		self.checkThreadTimer_run.start(1000)
 
-		self.pushButton_run.disconnect('clicked(bool)', self.onCSVFile)
+		self.pushButton_run.disconnect('clicked(bool)', self.onRun_MFSDA)
 		self.pushButton_run.connect('clicked(bool)', self.onKillComputation)
 
 		return
  
-        '''		self.param = {}
-		self.param["shape"] = self.lineEdit_ShapePvalue.currentPath
-		self.param["pvalues"] = self.lineEdit_output.directory+'/pvalues.json'
-		self.param["efit"] = self.lineEdit_output.directory+'/efit.json'
-		self.param["covariates"] = self.lineEdit_CovariateNames.currentPath
-		self.param["output"] = self.lineEdit_output.directory+'/out.vtk'
 
-		MFSDAShapemodule = slicer.modules.MFSDA_createShapes
-		self.MFSDAShapeThread=slicer.cli.run(MFSDAShapemodule, None, self.param, wait_for_completion=False)
-
-		return
-
-		CSVFile=open(self.lineEdit_output.directory+'/output.csv', 'wb')
-		Data=['VTK Files']
-		with CSVFile:
-			writer = csv.writer(CSVFile)
-			writer.writerow(Data)
-			writer.writerow([self.lineEdit_ShapePvalue.currentPath])
-		CSVFile.close()
-		parameters = {}
-		parameters["CSVFile"] = self.lineEdit_output.directory+'/output.csv'
-		module = slicer.modules.shapepopulationviewer
-		slicer.cli.run(module, None, parameters, wait_for_completion=True)
-
-		return
-
-
-		args=arguments(coordData=self.lineEdit_template.currentPath, covariate=self.lineEdit_covariate.currentPath, covariateType=self.lineEdit_covariateType.currentPath, outputDir=self.lineEdit_output.directory, shapeData=self.lineEdit_vtk.currentPath, shapePath=PathOutput)
-		self.logic.run_script(args)
-
-
-		pvaluesPath=self.lineEdit_output.directory+'/pvalues.json'
-		efitPath=self.lineEdit_output.directory+'/efit.json'
-		ShapePvalue=self.lineEdit_ShapePvalue.currentPath
-		outputPath=self.lineEdit_output.directory+'/out.vtk'
-		argShapes=arguments(pvalues=pvaluesPath, covariates=self.lineEdit_CovariateNames.currentPath, shape=self.lineEdit_ShapePvalue.currentPath, efit=efitPath, output=outputPath)
-		self.logic.run_Shape(argShapes)
-
-
-		CSVFile=open(self.lineEdit_output.directory+'/output.csv', 'wb')
-		Data=['VTK Files']
-		with CSVFile:
-			writer = csv.writer(CSVFile)
-			writer.writerow(Data)
-			writer.writerow([self.lineEdit_ShapePvalue.currentPath])
-		CSVFile.close()
-		parameters = {}
-		parameters["CSVFile"] = self.lineEdit_output.directory+'/output.csv'
-		module = slicer.modules.shapepopulationviewer
-		slicer.cli.run(module, None, parameters, wait_for_completion=True)'''
-			
-
-
-
-		# self.lineEdit_4.setCurrentPath(" ")
-		# Parameters Area
-		#
-	# 	self.dictShapeModels = dict()
-
- #        # Check if the path exists:
- #        if not os.path.exists(self.lineEdit_4.currentPath):
- #            self.stateCSVDataset = False
- #            self.enableNetwork()
- #            # return
-
- #        # print("------ Selection of a Dataset ------")
- #        # Check if it's a CSV file
- #        condition1 = self.logic.checkExtension(self.lineEdit_4.currentPath, ".csv")
- #        if not condition1:
- #            self.lineEdit_4.setCurrentPath(" ")
- #            self.stateCSVDataset = False
- #            self.enableNetwork()
- #            # return
-	
-	
-
-#
-# MFSDALogic
-#
 
 class MFSDALogic(ScriptedLoadableModuleLogic):
 	"""This class should implement all the actual
